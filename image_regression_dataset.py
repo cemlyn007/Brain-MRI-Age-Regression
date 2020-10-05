@@ -26,7 +26,7 @@ class ImageRegressionDataset(Dataset):
 
         # self.samples = [(sitk.DiscreteGaussian(sitk.ReadImage(f"{data_dir}/greymatter/wc1sub-{ID}_T1w.nii.gz", sitk.sitkFloat32), smoothen)) for ID in self.ids]
         self.targets = torch.tensor(id_ages, dtype=torch.float).view((-1, 1))
-        print("Initialisation complete")
+        print("Initialisation Complete")
 
     def __len__(self):
         return len(self.targets)
