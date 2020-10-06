@@ -69,7 +69,6 @@ print(f"Total Params: {params}")
 train_loader = DataLoader(dataset1, batch_size=batch_size, num_workers=num_workers)
 val_loader = DataLoader(dataset2, batch_size=batch_size, num_workers=num_workers)
 folds_training_losses = []
-folds_val_losses = []
 folds_val_mean_losses = []
 
 for i in range(2):
