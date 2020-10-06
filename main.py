@@ -114,7 +114,7 @@ log_results(cv_mean_age_error, num_epochs, batch_size,
             lr, feats, gamma, smoothen,
             edgen, dropout_p, params, model, f'{fn}/log.txt')
 
-plot_cv_losses(folds_training_losses, val_epochs, folds_val_losses, num_epochs, f'{fn}/cv_graph.png')
+plot_cv_losses(folds_training_losses, val_epochs, folds_val_mean_losses, num_epochs, f'{fn}/cv_graph.png')
 
 """# Full Train & Final Test"""
 
