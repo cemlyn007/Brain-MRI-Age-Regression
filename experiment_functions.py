@@ -52,7 +52,8 @@ def eval_epoch(model, dl_loader, loss_function, device):
 def plot_loss(x_epochs_mean_losses, y_epochs_mean_losses, labels, fn):
     num_epochs = len(x_epochs_mean_losses)
     plt.plot([epoch for epoch in range(num_epochs)], x_epochs_mean_losses, color='b', label=labels[0])
-    plt.plot(np.linspace(num_epochs, num=len(y_epochs_mean_losses)), y_epochs_mean_losses, color='r', label=labels[1])
+    plt.plot(np.linspace(start=0, stop=num_epochs-1, num=len(y_epochs_mean_losses)),
+             y_epochs_mean_losses, color='r', label=labels[1])
     plt.title("Loss")
     plt.xlabel("Number of Epochs")
     plt.ylabel("Loss")
