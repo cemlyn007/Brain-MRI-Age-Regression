@@ -29,7 +29,7 @@ test_meta_data_csv_path = os.path.join(data_dir, 'meta', 'meta_data_reg_test.csv
 
 cuda_dev = '0'  # GPU device 0 (can be changed if multiple GPUs are available)
 use_cuda = torch.cuda.is_available()
-num_workers = os.cpu_count() - 2
+num_workers = max(os.cpu_count() - 2, 0)
 
 dtype = torch.float32
 feats = 5
@@ -70,11 +70,13 @@ train_loader = DataLoader(dataset1, batch_size=batch_size, num_workers=num_worke
 val_loader = DataLoader(dataset2, batch_size=batch_size, num_workers=num_workers)
 folds_training_losses = []
 folds_val_losses = []
+folds_val_mean_losses = []
 
 for i in range(2):
     print("CV: ", i)
     train_epochs_mean_losses = []
     val_epochs_mean_losses = []
+    val_epochs = []
     i_fold_val_scores = []
 
     model = MRIRegressor(feats, dropout_p).to(device=device)
@@ -82,38 +84,38 @@ for i in range(2):
     scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=gamma, last_epoch=-1)
 
     for epoch in range(num_epochs):
-        epoch_train_losses = train_epoch(model, train_loader, loss_function, optimizer, scheduler, device)
-        train_mean_age_error = np.mean(epoch_train_losses)
-        train_max_age_error = np.max(epoch_train_losses)
-        train_epochs_mean_losses.append(train_mean_age_error)
-        if epoch % 5 == 0:
-            epoch_val_losses = eval_epoch(model, val_loader, loss_function, device)
-            val_mean_age_error = np.mean(epoch_val_losses)
-            val_epochs_mean_losses.append(np.mean(val_mean_age_error))
+        epoch_train_batch_losses = train_epoch(model, train_loader, loss_function, optimizer, scheduler, device)
+        train_mean_loss = np.mean(epoch_train_batch_losses)
+        train_max_loss = np.max(epoch_train_batch_losses)
+        train_epochs_mean_losses.append(train_mean_loss)
+        if epoch % 5 == 0 or epoch == num_epochs - 1:
+            val_epochs.append(epoch)
+            epoch_val_batch_losses = eval_epoch(model, val_loader, loss_function, device)
+            val_mean_loss = np.mean(epoch_val_batch_losses)
+            val_epochs_mean_losses.append(val_mean_loss)
             print(f"Epoch: {epoch}:: Learning Rate: {scheduler.get_lr()[0]}")
             print(f"Epoch: {epoch} "
-                  f"Train Maxiumum Age Error: {train_max_age_error} "
-                  f"Train Mean Age Error: {train_mean_age_error}, "
-                  f"Val Mean Age Error: {val_mean_age_error}")
+                  f"Train Maxiumum Batch Loss: {train_max_loss} "
+                  f"Train Mean Batch Loss: {train_mean_loss}, "
+                  f"Val Mean Batch Loss: {val_mean_loss}")
         train_loader, val_loader = val_loader, train_loader
 
     i_fold_val_losses = eval_epoch(model, val_loader, loss_function, device)
-    i_fold_mean_fold_losses = np.mean(i_fold_val_losses)
-    folds_val_losses.append(i_fold_mean_fold_losses)
-    print(f"Fold {i}, Validation Mean Age Error: {i_fold_mean_fold_losses}")
-    plot_loss(train_epochs_mean_losses, val_epochs_mean_losses, ["Train", "Val"], f'{fn}/graph_{i}.png')
+    i_fold_mean_fold_loss = np.mean(i_fold_val_losses)
+    folds_val_mean_losses.append(i_fold_mean_fold_loss)
+    print(f"Fold {i}, Validation Mean Loss: {i_fold_mean_fold_loss}")
+    plot_loss(train_epochs_mean_losses, val_epochs, val_epochs_mean_losses, ["Train", "Val"], f'{fn}/graph_{i}.png')
     folds_training_losses.append(train_epochs_mean_losses)
-    folds_val_losses.append(val_epochs_mean_losses)
     torch.save(model, f'{fn}/model-{i}.pth')
 
-cv_mean_age_error = np.mean(folds_val_losses)
-print(f"Average Loss on whole val set: {cv_mean_age_error}")
+cv_mean_age_error = np.mean(folds_val_mean_losses)
+print(f"CV Mean Loss on whole val set: {cv_mean_age_error}")
 
 log_results(cv_mean_age_error, num_epochs, batch_size,
             lr, feats, gamma, smoothen,
             edgen, dropout_p, params, model, f'{fn}/log.txt')
 
-plot_cv_losses(folds_training_losses, folds_val_losses, num_epochs, f'{fn}/cv_graph.png')
+plot_cv_losses(folds_training_losses, val_epochs, folds_val_losses, num_epochs, f'{fn}/cv_graph.png')
 
 """# Full Train & Final Test"""
 
@@ -129,7 +131,8 @@ train_loader = DataLoader(train_ds, batch_size=batch_size)
 test_loader = DataLoader(test_ds, batch_size=batch_size)
 
 train_epochs_mean_losses = []
-test_loss_epochs = []
+test_epochs = []
+test_epochs_mean_losses = []
 
 model = MRIRegressor(feats, dropout_p).to(device=device)
 params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -140,47 +143,52 @@ optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay)
 scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=gamma, last_epoch=-1)
 
 for epoch in range(num_epochs):
-    epoch_train_losses = train_epoch(model, train_loader, loss_function, optimizer, scheduler, device)
-    train_mean_age_error = np.mean(epoch_train_losses)
-    train_max_age_error = np.max(epoch_train_losses)
-    train_epochs_mean_losses.append(train_mean_age_error)
-    if epoch % 5 == 0:
-        epoch_test_losses = eval_epoch(model, test_loader, loss_function, device)
-        test_mean_age_error = np.mean(epoch_test_losses)
-        test_loss_epochs.append(np.mean(test_mean_age_error))
+    epoch_train_batch_losses = train_epoch(model, train_loader, loss_function, optimizer, scheduler, device)
+    train_mean_loss = np.mean(epoch_train_batch_losses)
+    train_max_loss = np.max(epoch_train_batch_losses)
+    train_epochs_mean_losses.append(train_mean_loss)
+    if epoch % 5 == 0 or epoch == num_epochs - 1:
+        test_epochs.append(epoch)
+        epoch_test_batch_losses = eval_epoch(model, val_loader, loss_function, device)
+        test_mean_loss = np.mean(epoch_test_batch_losses)
+        test_epochs_mean_losses.append(test_mean_loss)
         print(f"Epoch: {epoch}:: Learning Rate: {scheduler.get_lr()[0]}")
         print(f"Epoch: {epoch} "
-              f"Train Maxiumum Age Error: {train_max_age_error} "
-              f"Train Mean Age Error: {train_mean_age_error}, "
-              f"Val Mean Age Error: {test_mean_age_error}")
+              f"Train Maxiumum Batch Loss: {train_max_loss} "
+              f"Train Mean Batch Loss: {train_mean_loss}, "
+              f"Test Mean Batch Loss: {test_mean_loss}")
 
 test_losses = eval_epoch(model, test_loader, loss_function, device)
 test_mean_loss = np.mean(test_losses)
-test_loss_epochs.append(test_mean_loss)
-print(f"Mean Age Error: {test_mean_loss}")
-plot_loss(train_epochs_mean_losses, test_loss_epochs, ["Train", "Test"], f'{fn}/test_loss_graph.png')
+print(f"Test Mean Batch Loss: {test_mean_loss}")
+
+plot_loss(train_epochs_mean_losses, test_epochs, test_epochs_mean_losses, ["Train", "Test"],
+          f'{fn}/test_loss_graph.png')
 torch.save(model, f'{fn}/final_model.pth')
 
 model.eval()
-pred_ages = []
-actual_ages = []
+train_pred_ages = []
+train_actual_ages = []
+test_pred_ages = []
+test_actual_ages = []
+
 with torch.no_grad():
     for batch_data, batch_labels in train_loader:
         batch_data = batch_data.to(device=device)
         batch_labels = batch_labels.to(device=device)
         batch_preds = model(batch_data)
-        pred_ages.append([batch_preds[i].item() for i in range(len(batch_preds))])
-        actual_ages.append([batch_labels[i].item() for i in range(len(batch_labels))])
+        train_pred_ages.append([batch_preds[i].item() for i in range(len(batch_preds))])
+        train_actual_ages.append([batch_labels[i].item() for i in range(len(batch_labels))])
 
     for batch_data, batch_labels in test_loader:
         batch_data = batch_data.to(device=device)  # move to device, e.g. GPU
         batch_labels = batch_labels.to(device=device)
         batch_preds = model(batch_data)
-        pred_ages.append([batch_preds[i].item() for i in range(len(batch_preds))])
-        actual_ages.append([batch_labels[i].item() for i in range(len(batch_labels))])
+        test_pred_ages.append([batch_preds[i].item() for i in range(len(batch_preds))])
+        test_actual_ages.append([batch_labels[i].item() for i in range(len(batch_labels))])
 
-pred_ages = np.concatenate(pred_ages)
-actual_ages = np.concatenate(actual_ages)
+pred_ages = np.concatenate(train_pred_ages + test_pred_ages)
+actual_ages = np.concatenate(train_actual_ages + test_actual_ages)
 
 fig, ax = plt.subplots()
 ax.scatter(actual_ages, pred_ages, marker='.')
@@ -189,3 +197,6 @@ ax.set_xlabel('Real Age')
 ax.set_ylabel('Predicted Age')
 plt.savefig(f'{fn}/age_vs_predict.png')
 plt.close()
+
+print("Train Mean Age Error: ", np.mean(np.abs(np.array(train_pred_ages) - np.array(train_actual_ages))))
+print("Test Mean Age Error: ", np.mean(np.abs(np.array(test_pred_ages) - np.array(test_actual_ages))))

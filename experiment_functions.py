@@ -49,11 +49,10 @@ def eval_epoch(model, dl_loader, loss_function, device):
     return batch_losses
 
 
-def plot_loss(x_epochs_mean_losses, y_epochs_mean_losses, labels, fn):
+def plot_loss(x_epochs_mean_losses, y_epochs, y_epochs_mean_losses, labels, fn):
     num_epochs = len(x_epochs_mean_losses)
     plt.plot([epoch for epoch in range(num_epochs)], x_epochs_mean_losses, color='b', label=labels[0])
-    plt.plot(np.linspace(start=0, stop=num_epochs-1, num=len(y_epochs_mean_losses)),
-             y_epochs_mean_losses, color='r', label=labels[1])
+    plt.plot(y_epochs, y_epochs_mean_losses, color='r', label=labels[1])
     plt.title("Loss")
     plt.xlabel("Number of Epochs")
     plt.ylabel("Loss")
@@ -64,10 +63,10 @@ def plot_loss(x_epochs_mean_losses, y_epochs_mean_losses, labels, fn):
     plt.close()
 
 
-def plot_cv_losses(folds_training_losses, folds_val_losses, num_epochs, fn):
+def plot_cv_losses(folds_training_losses, val_epochs, folds_val_losses, num_epochs, fn):
     for j in range(2):
         plt.plot([epoch for epoch in range(num_epochs)], folds_training_losses[j], color='b', label=f'Train-{j}')
-        plt.plot([5 * i for i in range(len(folds_val_losses[j]))], folds_val_losses[j], color='r', label=f'Val-{j}')
+        plt.plot(val_epochs, folds_val_losses[j], color='r', label=f'Val-{j}')
     plt.title("Loss")
     plt.xlabel("Number of Epochs")
     plt.ylabel("Loss")
