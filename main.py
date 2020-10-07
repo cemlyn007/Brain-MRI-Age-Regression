@@ -40,6 +40,16 @@ batch_size = 32
 dropout_p = 0.5
 weight_decay = 0.005
 
+# dtype = torch.float32
+# feats = 10
+# num_epochs = 200
+# lr = 0.006882801723742766
+# gamma = 0.97958263796472
+# batch_size = 32
+# dropout_p = 0.5
+# weight_decay = 0.005
+
+
 """# Device Setup"""
 device = torch.device("cuda:" + cuda_dev if use_cuda else "cpu")
 print('Device: ' + str(device))
@@ -69,6 +79,7 @@ print(f"Total Params: {params}")
 train_loader = DataLoader(dataset1, batch_size=batch_size, num_workers=num_workers)
 val_loader = DataLoader(dataset2, batch_size=batch_size, num_workers=num_workers)
 folds_training_losses = []
+folds_val_losses = []
 folds_val_mean_losses = []
 
 for i in range(2):
@@ -104,6 +115,7 @@ for i in range(2):
     folds_val_mean_losses.append(i_fold_mean_fold_loss)
     print(f"Fold {i}, Validation Mean Loss: {i_fold_mean_fold_loss}")
     plot_loss(train_epochs_mean_losses, val_epochs, val_epochs_mean_losses, ["Train", "Val"], f'{fn}/graph_{i}.png')
+    folds_val_losses.append(val_epochs_mean_losses)
     folds_training_losses.append(train_epochs_mean_losses)
     torch.save(model, f'{fn}/model-{i}.pth')
 
@@ -114,7 +126,7 @@ log_results(cv_mean_age_error, num_epochs, batch_size,
             lr, feats, gamma, smoothen,
             edgen, dropout_p, params, model, f'{fn}/log.txt')
 
-plot_cv_losses(folds_training_losses, val_epochs, folds_val_mean_losses, num_epochs, f'{fn}/cv_graph.png')
+plot_cv_losses(folds_training_losses, val_epochs, folds_val_losses, num_epochs, f'{fn}/cv_graph.png')
 
 """# Full Train & Final Test"""
 
@@ -197,5 +209,5 @@ ax.set_ylabel('Predicted Age')
 plt.savefig(f'{fn}/age_vs_predict.png')
 plt.close()
 
-print("Train Mean Age Error: ", np.mean(np.abs(np.array(train_pred_ages) - np.array(train_actual_ages))))
-print("Test Mean Age Error: ", np.mean(np.abs(np.array(test_pred_ages) - np.array(test_actual_ages))))
+print("Train Mean Age Error: ", np.mean(np.abs(np.concatenate(train_pred_ages) - np.concatenate(train_actual_ages))))
+print("Test Mean Age Error: ", np.mean(np.abs(np.concatenate(test_pred_ages) - np.concatenate(test_actual_ages))))
