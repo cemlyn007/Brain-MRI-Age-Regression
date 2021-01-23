@@ -1,35 +1,82 @@
+import os
+
 from torch.utils.data import Dataset
 import SimpleITK as sitk
 import torch
 from helpers import resample_image
+from tqdm import tqdm
+import pandas as pd
+from concurrent.futures import ProcessPoolExecutor
 
-########################################
-# Create Dataset Class:
-########################################
 
 class ImageRegressionDataset(Dataset):
-    """Dataset for image segmentation."""
 
-    def __init__(self, data_dir, selected_ids, id_ages, smoothen=None, edgen=False):
+    def __init__(self, data_dir, mode="train", smoothen=None,
+                 edge_detect=False, max_workers=0):
+        self.data, self.targets = None, None
+        self.data_dir = data_dir
         if smoothen is None:
             smoothen = 0
-        print("Initialising Dataset")
-        self.ids = selected_ids
-        if edgen:  # resample_image(dts[0][0], [3, 3, 3], [60, 60, 50])
-            self.samples = [torch.from_numpy(sitk.GetArrayFromImage(sitk.SobelEdgeDetection(sitk.DiscreteGaussian(
-                resample_image(sitk.ReadImage(f"{data_dir}/greymatter/wc1sub-{ID}_T1w.nii.gz", sitk.sitkFloat32),
-                               [3, 3, 3], [60, 60, 50]), smoothen)))).unsqueeze(0) for ID in self.ids]
-        else:
-            self.samples = [torch.from_numpy(sitk.GetArrayFromImage(sitk.DiscreteGaussian(
-                resample_image(sitk.ReadImage(f"{data_dir}/greymatter/wc1sub-{ID}_T1w.nii.gz", sitk.sitkFloat32),
-                               [3, 3, 3], [60, 60, 50]), smoothen))).unsqueeze(0) for ID in self.ids]
+        self.smoothen = smoothen
+        self.edge_detect = edge_detect
+        self.max_workers = max_workers
 
-        # self.samples = [(sitk.DiscreteGaussian(sitk.ReadImage(f"{data_dir}/greymatter/wc1sub-{ID}_T1w.nii.gz", sitk.sitkFloat32), smoothen)) for ID in self.ids]
-        self.targets = torch.tensor(id_ages, dtype=torch.float).view((-1, 1))
-        print("Initialisation Complete")
+        if mode == "train":
+            self.load_train_meta_files()
+        elif mode == "test":
+            self.load_test_meta_files()
+        else:
+            raise ValueError(f"Expected mode to be: train or test "
+                             f"but got {mode}")
+        self.load_dataset()
+
+    def get_filename(self, patient_id):
+        return f"sub-{patient_id}_T1w_unbiased.nii.gz"
+
+    def load_train_meta_files(self):
+        train_meta_csv_path = os.path.join(self.data_dir, "meta",
+                                           "meta_data_regression_train.csv")
+        self._load_meta_files(train_meta_csv_path)
+
+    def load_test_meta_files(self):
+        test_meta_csv_path = os.path.join(self.data_dir, "meta",
+                                          "meta_data_regression_test.csv")
+        self._load_meta_files(test_meta_csv_path)
+
+    def _load_meta_files(self, fn):
+        meta_data = pd.read_csv(fn)
+        self.ids = meta_data["subject_id"].tolist()
+        ages = meta_data["age"].tolist()
+        self.targets = torch.tensor(ages).unsqueeze(-1)
+
+    def load_image(self, patient_id):
+        fn = self.get_filename(patient_id)
+        filepath = os.path.join(self.data_dir, "images", fn)
+        img = sitk.ReadImage(filepath, sitk.sitkFloat32)
+        img = resample_image(img, [3, 3, 3], [60, 60, 50])
+        img = sitk.DiscreteGaussian(img, self.smoothen)
+        if self.edge_detect:
+            img = sitk.SobelEdgeDetection(img)
+        img = sitk.GetArrayFromImage(img)
+        img = torch.from_numpy(img)
+        img.unsqueeze_(0)
+        return img
+
+    def load_dataset(self):
+        self.data = []
+        if self.max_workers > 0:
+            with ProcessPoolExecutor(self.max_workers) as e:
+                img_iter = tqdm(e.map(self.load_image, self.ids, chunksize=32),
+                                total=len(self))
+                img_iter.set_description("Loading Images")
+                self.data = [img for img in img_iter]
+        else:
+            ids_iter = tqdm(self.ids)
+            ids_iter.set_description("Loading Images")
+            self.data = [img for img in map(self.load_image, ids_iter)]
 
     def __len__(self):
         return len(self.targets)
 
     def __getitem__(self, item):
-        return self.samples[item], self.targets[item]
+        return self.data[item], self.targets[item]
