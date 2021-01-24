@@ -16,7 +16,8 @@ class PrintTensor(nn.Module):
         return x
 
 
-def resample_image(image, out_spacing=(1.0, 1.0, 1.0), out_size=None, is_label=False, pad_value=0):
+def resample_image(image, out_spacing=(1.0, 1.0, 1.0), out_size=None,
+                   is_label=False, pad_value=0):
     """Resamples an image to given element spacing and output size."""
 
     original_spacing = np.array(image.GetSpacing())

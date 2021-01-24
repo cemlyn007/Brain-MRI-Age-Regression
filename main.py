@@ -4,7 +4,8 @@ import os
 import seaborn as sns
 import torch
 from torch.nn import L1Loss
-from torch.optim import Adam, lr_scheduler
+from torch.optim import Adam
+from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -33,7 +34,7 @@ if __name__ == "__main__":
     num_epochs = 200
     lr = 0.006882801723742766
     gamma = 0.97958263796472
-    batch_size = 8  # 128  # 32
+    batch_size = 4  # 128  # 32
     dropout_p = 0.5
     weight_decay = 0.005
 
@@ -44,7 +45,20 @@ if __name__ == "__main__":
     if use_cuda:
         print(f"GPU: {torch.cuda.get_device_name(int(cuda_dev))}", flush=True)
 
-    dataset = ImageRegressionDataset(data_dir, "train", smoothen, edgen, 6)
+    load_data = True
+    if load_data:
+        num_dl_workers = 0
+        dataset = ImageRegressionDataset(data_dir, "train", smoothen, edgen, 3,
+                                         load_data)
+    else:
+        num_dl_workers = 3
+        dataset = ImageRegressionDataset(data_dir, "train", smoothen, edgen, 0,
+                                         load_data)
+
+    split_idx = math.floor(len(dataset) / 2)
+    split = (split_idx, len(dataset) - split_idx)
+    gen = torch.Generator().manual_seed(random_state)
+    split1, split2 = torch.utils.data.random_split(dataset, split, gen)
 
     loss_function = L1Loss(reduction="none")
 
@@ -54,13 +68,8 @@ if __name__ == "__main__":
           f"Num_epochs: {num_epochs}, Gamma: {gamma}")
     print(f"Total Params: {params}")
 
-    split_idx = math.floor(len(dataset) / 2)
-    split = (split_idx, len(dataset) - split_idx)
-    gen = torch.Generator().manual_seed(random_state)
-    split1, split2 = torch.utils.data.random_split(dataset, split, gen)
 
-
-    def eval_step(model, data_loader, loss_func):
+    def eval_step(model, data_loader, loss_func, device):
         model.eval()
         with torch.no_grad():
             batch_losses = []
@@ -73,7 +82,7 @@ if __name__ == "__main__":
         return batch_losses
 
 
-    def train_step(model, train_data_loader, loss_func, optimizer):
+    def train_step(model, train_data_loader, loss_func, optimizer, device):
         model.train()
         batch_losses = []
         for data, targets in train_data_loader:
@@ -95,26 +104,26 @@ if __name__ == "__main__":
         writer.add_scalar(f"{main_tag}/sum_loss", losses.sum(), epoch)
 
 
+    dl_kwargs = dict(shuffle=True, num_workers=num_dl_workers)
     train_dataset, val_dataset = split1, split2
     for fold_id in range(2):
-
         model = MRIRegressor(feats, dropout_p).to(device=device)
         optimizer = Adam(model.parameters(), lr, weight_decay=weight_decay)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=gamma,
-                                        last_epoch=-1)
+        scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
 
-        train_loader = DataLoader(train_dataset, batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size, shuffle=True)
+        train_dl = DataLoader(train_dataset, batch_size, **dl_kwargs)
+        val_dl = DataLoader(val_dataset, batch_size, **dl_kwargs)
 
         epochs_iter = tqdm(range(num_epochs))
         epochs_iter.set_description(f"CV: {fold_id}")
         for epoch in epochs_iter:
-            train_losses = train_step(model, train_loader, loss_function,
-                                      optimizer)
-            val_losses = eval_step(model, val_loader, loss_function)
+            train_losses = train_step(model, train_dl, loss_function, optimizer,
+                                      device)
+            val_losses = eval_step(model, val_dl, loss_function, device)
             scheduler.step()
-
             log(f"{fold_id}/train", train_losses, epoch)
             log(f"{fold_id}/val", val_losses, epoch)
+            writer.add_histogram(f"{fold_id}/train", train_losses, epoch)
+            writer.add_histogram(f"{fold_id}/val", val_losses, epoch)
 
         train_dataset, val_dataset = val_dataset, train_dataset

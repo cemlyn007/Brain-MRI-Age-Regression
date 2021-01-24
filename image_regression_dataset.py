@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor
 class ImageRegressionDataset(Dataset):
 
     def __init__(self, data_dir, mode="train", smoothen=None,
-                 edge_detect=False, max_workers=0):
+                 edge_detect=False, max_workers=0, load_all=False):
         self.data, self.targets = None, None
         self.data_dir = data_dir
         if smoothen is None:
@@ -28,7 +28,8 @@ class ImageRegressionDataset(Dataset):
         else:
             raise ValueError(f"Expected mode to be: train or test "
                              f"but got {mode}")
-        self.load_dataset()
+        if load_all:
+            self.load_dataset()
 
     def get_filename(self, patient_id):
         return f"sub-{patient_id}_T1w_unbiased.nii.gz"
@@ -79,4 +80,9 @@ class ImageRegressionDataset(Dataset):
         return len(self.targets)
 
     def __getitem__(self, item):
-        return self.data[item], self.targets[item]
+        if self.data:
+            return self.data[item], self.targets[item]
+        else:
+            patient_id = self.ids[item]
+            img = self.load_image(patient_id)
+            return img, self.targets[item]
